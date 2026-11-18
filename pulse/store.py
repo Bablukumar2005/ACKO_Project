@@ -23,7 +23,7 @@ def create_service(data: dict) -> dict:
                 data.get("webhook_url", ""), int(data.get("enabled", True)), now_iso(),
             ),
         )
-        return get_service(cur.lastrowid)
+    return get_service(cur.lastrowid)
 
 
 def get_service(service_id: int) -> dict | None:

@@ -8,7 +8,7 @@ import threading
 from contextlib import contextmanager
 from pathlib import Path
 
-_lock = threading.Lock()
+_lock = threading.RLock()  # reentrant: store helpers may nest tx() blocks
 _conn: sqlite3.Connection | None = None
 
 SCHEMA = """
