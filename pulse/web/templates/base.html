@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="refresh" content="{{ refresh | default(0) }}">
+{% if refresh and refresh > 0 %}<meta http-equiv="refresh" content="{{ refresh }}">{% endif %}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}Pulse{% endblock %}</title>
 <style>

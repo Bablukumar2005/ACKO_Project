@@ -110,3 +110,37 @@ def test_notes_validation(client, in_memory_db):
     incident = store.open_incident(service["id"])
     assert client.post(f"/api/incidents/{incident['id']}/notes",
                        json={"note": ""}).status_code == 422
+
+
+# ------------------------------------------------------------------ navigation
+
+NAV_LINKS = ["/", "/status", "/metrics"]
+NAV_LABELS = ["Dashboard", "Public status", "Metrics"]
+
+
+def _page(client, path: str) -> str:
+    return client.get(path).text
+
+
+def test_every_page_has_working_nav_links(client):
+    for page in ("/", "/status", "/metrics"):
+        html = _page(client, page)
+        for href, label in zip(NAV_LINKS, NAV_LABELS):
+            assert f'href="{href}"' in html, f"{page} missing nav link {href}"
+            assert label in html, f"{page} missing nav label {label}"
+
+
+def test_no_page_emits_a_zero_second_refresh(client):
+    # content="0" is an instant infinite reload loop: it destroys the DOM under
+    # the user's cursor and makes header navigation appear dead in a browser.
+    for page in ("/", "/status", "/metrics"):
+        html = _page(client, page)
+        assert 'content="0"' not in html, f"{page} still has a 0-second reload loop"
+
+
+def test_refresh_only_where_promised(client, in_memory_db):
+    assert 'content="5"' in _page(client, "/")        # dashboard copy promises 5 s
+    assert 'content="10"' in _page(client, "/status")  # status copy promises 10 s
+    assert "http-equiv=\"refresh\"" not in _page(client, "/metrics")  # static page: none
+    service = make_service()  # detail pages must not self-refresh (forms live there)
+    assert "http-equiv=\"refresh\"" not in _page(client, f"/services/{service['id']}")

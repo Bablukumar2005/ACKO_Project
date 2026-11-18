@@ -54,6 +54,7 @@ def dashboard(request: Request):
         "services": services,
         "incidents": incidents,
         "metrics": metrics.overview(),
+        "refresh": 5,  # live dashboard; explicitly > 0 so the meta tag is emitted
     })
 
 
@@ -165,6 +166,7 @@ def public_status(request: Request):
     return TEMPLATES.TemplateResponse(request, "status.html", {
         "services": services,
         "recent": recent,
+        "refresh": 10,  # public page auto-refresh, as its copy promises
     })
 
 
