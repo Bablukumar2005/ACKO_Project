@@ -16,7 +16,7 @@ def _env_int(name: str, default: int) -> int:
 DB_PATH: str = os.environ.get("PULSE_DB", "pulse.db")
 
 HOST: str = os.environ.get("PULSE_HOST", "127.0.0.1")
-PORT: int = _env_int("PULSE_PORT", 8000)
+PORT: int = _env_int("PULSE_PORT", 8001)
 
 # Default webhook target (the kit's receiver). Each service may override it.
 WEBHOOK_URL: str = os.environ.get("PULSE_WEBHOOK_URL", "http://localhost:9900")

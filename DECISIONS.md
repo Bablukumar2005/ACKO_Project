@@ -87,6 +87,25 @@ Each entry: time (IST on 2026-11-18), the decision, why, and alternatives consid
 - **Why:** makes the first `docker compose up` + `python run.py` demo work with zero
   manual setup; the catalogue API/UI can still edit everything.
 
+## 18:41 — Default web port 8001, not 8000
+
+- **Decision:** Pulse listens on 8001 by default (`PULSE_PORT` to override).
+- **Why:** on this laptop Docker Desktop's proxy already owns `0.0.0.0:8000` for another
+  project, which made a half-bound double-listener; 8080 was taken too. 8000 is a very
+  common dev-machine clash in general.
+- **Also noted:** Git Bash on this machine is WSL2 — it cannot reach Windows-side
+  `127.0.0.1` ports, so the acceptance suite ships as pytest (runs on Windows Python)
+  plus a POSIX `scripts/acceptance.sh` for macOS/Linux.
+
+## 18:44 — State machine hardening: recovery must be confirmed
+
+- **Decision:** after a full failure-run, one success no longer flips the service to
+  `degraded`; it stays `down` until `successes_to_recover` consecutive successes.
+- **Why:** unit tests exposed that a single lucky success right after an outage masked
+  a real outage. A recovery should be confirmed, mirroring the "consecutive failures"
+  rule on the way down.
+- **Changed after Gate 1:** recorded here rather than editing PLAN.md, as instructed.
+
 ## 18:37 — Availability math (check-weighted)
 
 - **Decision:** availability % in a window = successful checks ÷ total checks in that
