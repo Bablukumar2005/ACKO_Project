@@ -1,10 +1,12 @@
 """Server-rendered operator UI + public status page (Jinja2, no JS build)."""
-from fastapi import APIRouter, Form, Request
+import re
+
+from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pathlib import Path
 
-from .. import metrics, reliability, store
+from .. import auth, metrics, reliability, store, users
 from ..checker import friendly
 from ..main import pulse
 from ..util import to_ist
@@ -32,10 +34,87 @@ def _states() -> dict[int, str]:
     return pulse.scheduler.states if pulse.scheduler else {}
 
 
+# --------------------------------------------------------------------- auth pages
+
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+@router.get("/login", response_class=HTMLResponse)
+def login_page(request: Request, next: str = ""):
+    if auth.current_user(request):
+        return RedirectResponse("/", 303)
+    return TEMPLATES.TemplateResponse(request, "login.html",
+                                      {"error": None, "next": next, "values": {}})
+
+
+@router.post("/login", response_class=HTMLResponse)
+def login_submit(request: Request, email: str = Form(""),
+                 password: str = Form(""), next: str = Form("/")):
+    user = users.get_user_by_email(email)
+    if user is None or not users.verify_password(password, user["password_hash"]):
+        # never echo the attempted password back into the page
+        return TEMPLATES.TemplateResponse(
+            request, "login.html",
+            {"error": "Invalid email or password.", "next": next,
+             "values": {"email": email.strip()}}, status_code=401)
+    auth.login_session(request, user)
+    # only same-site paths: no open redirects
+    target = next if next.startswith("/") and not next.startswith("//") else "/"
+    return RedirectResponse(target, 303)
+
+
+@router.get("/signup", response_class=HTMLResponse)
+def signup_page(request: Request):
+    if auth.current_user(request):
+        return RedirectResponse("/", 303)
+    return TEMPLATES.TemplateResponse(request, "signup.html",
+                                      {"errors": {}, "values": {}})
+
+
+@router.post("/signup", response_class=HTMLResponse)
+def signup_submit(request: Request, name: str = Form(""), email: str = Form(""),
+                  password: str = Form(""), confirm: str = Form("")):
+    """Self-registration form. Server-side validation with per-field feedback.
+
+    The submitted password is never re-rendered — only name/email are kept.
+    """
+    errors: dict[str, str] = {}
+    if not name.strip():
+        errors["name"] = "Please enter your name."
+    elif len(name.strip()) > 100:
+        errors["name"] = "Name is too long (max 100 characters)."
+    if not _EMAIL_RE.match(email.strip()):
+        errors["email"] = "Enter a valid email address."
+    if len(password) < 8:
+        errors["password"] = "Password must be at least 8 characters."
+    elif len(password) > 200:
+        errors["password"] = "Password is too long (max 200 characters)."
+    elif password != confirm:
+        errors["confirm"] = "Passwords do not match."
+    user = None
+    if not errors:
+        user = users.register_user(name, email, password)
+        if user is None:
+            errors["email"] = "That email is already registered — try signing in."
+    if errors:
+        return TEMPLATES.TemplateResponse(request, "signup.html", {
+            "errors": errors,
+            "values": {"name": name.strip(), "email": email.strip()},
+        }, status_code=422)
+    auth.login_session(request, user)
+    return RedirectResponse("/", 303)
+
+
+@router.post("/logout")
+def logout(request: Request):
+    auth.logout_session(request)
+    return RedirectResponse("/login", 303)
+
+
 # --------------------------------------------------------------------- operator
 
 @router.get("/", response_class=HTMLResponse)
-def dashboard(request: Request):
+def dashboard(request: Request, user: dict = Depends(auth.require_web_user)):
     services = []
     for s in store.list_services():
         state = _states().get(s["id"], "unknown")
@@ -54,12 +133,14 @@ def dashboard(request: Request):
         "services": services,
         "incidents": incidents,
         "metrics": metrics.overview(),
+        "user": user,
         "refresh": 5,  # live dashboard; explicitly > 0 so the meta tag is emitted
     })
 
 
 @router.get("/services/{service_id}", response_class=HTMLResponse)
-def service_detail(request: Request, service_id: int):
+def service_detail(request: Request, service_id: int,
+                   user: dict = Depends(auth.require_web_user)):
     service = store.get_service(service_id)
     if service is None:
         return RedirectResponse("/", 302)
@@ -74,11 +155,13 @@ def service_detail(request: Request, service_id: int):
         "reliability": reliability.reliability_card(service),
         "checks": checks,
         "incidents": incidents,
+        "user": user,
     })
 
 
 @router.get("/incidents/{incident_id}", response_class=HTMLResponse)
-def incident_detail(request: Request, incident_id: int):
+def incident_detail(request: Request, incident_id: int,
+                    user: dict = Depends(auth.require_web_user)):
     incident = store.get_incident(incident_id)
     if incident is None:
         return RedirectResponse("/", 302)
@@ -90,6 +173,7 @@ def incident_detail(request: Request, incident_id: int):
         "service": service,
         "events": events,
         "notifications": notifications,
+        "user": user,
     })
 
 
@@ -104,27 +188,29 @@ def _incident_notifications(incident_id: int) -> list[dict]:
 
 
 @router.post("/incidents/{incident_id}/ack")
-def ack(incident_id: int):
+def ack(incident_id: int, user: dict = Depends(auth.require_web_user)):
     store.ack_incident(incident_id)
     return RedirectResponse(f"/incidents/{incident_id}", 303)
 
 
 @router.post("/incidents/{incident_id}/note")
-def note(incident_id: int, note: str = Form("")):
+def note(incident_id: int, note: str = Form(""),
+         user: dict = Depends(auth.require_web_user)):
     if note.strip():
         store.add_note(incident_id, note.strip())
     return RedirectResponse(f"/incidents/{incident_id}", 303)
 
 
 @router.post("/incidents/{incident_id}/resolve")
-def resolve(incident_id: int):
+def resolve(incident_id: int, user: dict = Depends(auth.require_web_user)):
     store.resolve_incident(incident_id)
     return RedirectResponse(f"/incidents/{incident_id}", 303)
 
 
 @router.post("/services", response_class=HTMLResponse)
 def create_service_web(name: str = Form(""), health_url: str = Form(""),
-                       owner: str = Form(""), target_pct: str = Form("99.9")):
+                       owner: str = Form(""), target_pct: str = Form("99.9"),
+                       user: dict = Depends(auth.require_web_user)):
     from ..api.routes import ServiceIn
     try:
         data = ServiceIn(name=name.strip(), health_url=health_url.strip(),

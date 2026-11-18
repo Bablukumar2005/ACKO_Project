@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Pulse — sign in{% endblock %}
+{% block content %}
+<div class="auth-wrap">
+  <div class="auth-card">
+    <h1>Sign in to Pulse</h1>
+    <p class="sub">Operator dashboard — incidents, uptime and alerts.</p>
+    {% if error %}<div class="banner">{{ error }}</div>{% endif %}
+    <form method="post" action="/login">
+      <input type="hidden" name="next" value="{{ next | default('/') }}">
+      <div class="field">
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" value="{{ values.get('email', '') }}"
+               required autofocus autocomplete="username">
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <div class="pw-wrap">
+          <input id="password" name="password" type="password" required autocomplete="current-password">
+          <button type="button" class="pw-toggle" data-target="password"
+                  aria-label="Show password" aria-pressed="false">&#128065;</button>
+        </div>
+      </div>
+      <button type="submit" class="btn-primary">Sign in</button>
+    </form>
+    <div class="auth-alt">New to Pulse? <a href="/signup">Create an account</a></div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  document.querySelectorAll(".pw-toggle").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var input = document.getElementById(btn.dataset.target);
+      var show = input.type === "password";
+      input.type = show ? "text" : "password";
+      btn.setAttribute("aria-pressed", String(show));
+      btn.setAttribute("aria-label", show ? "Hide password" : "Show password");
+      btn.innerHTML = show ? "&#128064;" : "&#128065;";
+    });
+  });
+</script>
+{% endblock %}

@@ -1,108 +1,142 @@
 # PLAN.md — Pulse, a status and incident hub
 
-> Consolidated plan for the built product. The original Gate 1 plan is preserved in
-> git history (`048a8a0`); post-gate changes live in `DECISIONS.md`.
+> Gate 1 plan (written at ~1:00 into the build). Left unchanged afterwards; later
+> changes are recorded in `DECISIONS.md`, as the problem statement asks.
 
-## Project overview
+## The problem, in my own words
 
-Pulse continuously checks the health of registered services (the starter kit's
-`quotes`, `payments`, `claims`, `notifications`), classifies each as
-`healthy / degraded / down`, opens and tracks an incident until recovery, notifies a
-webhook receiver, and proves reliability against per-service targets.
+Acko runs hundreds of services. When one breaks, three groups are hurt and today
+nobody tells them in time:
 
-Users: engineers on call (operator dashboard), the support team (webhook alerts),
-customers (sanitized public status page). Internal error text (e.g. the kit's
-`upstream …-db timeout at 10.12.4.7:5432`) never reaches public surfaces.
+- **Engineers on call** — need to know *now*, so they can start fixing.
+- **The support team** — start getting customer calls and need to know what to say.
+- **Customers** — see a payment fail and don't know if the problem is theirs or ours.
 
-## Architecture
+Afterwards nobody can answer "how reliable has this service actually been, and is it
+meeting its target?".
 
-```
-              ┌────────────────────────── Pulse (one process) ─────────────────────┐
- mock services │ Scheduler: 1 asyncio task per service (isolated, per-service      │
- :7001–7004 ──► interval/timeout)                                                 │
-              │        └► Checker (httpx GET /health → ok|timeout|conn_refused|5xx) │
-              │            └► State machine (pure fn: 3 fails→down, 2 ok→recover)   │
-              │                ├► Incident engine (open/ack/note/resolve + timeline)│
-              │                ├► Notifier (webhook POST, 3 attempts, logged)       │
-              │                ├► Reliability (1h/24h/7d uptime vs target, budget)  │
-              │                └► Metrics (MTTD, MTTR, checker p50/95/99, delivery) │
-              │ FastAPI: JSON API (/api/*) + Jinja2 UI (/, /status, /metrics, …)    │
-              └──────────────────────────────────┬─────────────────────────────────┘
-                                                 ▼
-                                    SQLite (WAL): services, checks,
-                                    incidents, incident_events, notifications
-```
+**Pulse** continuously checks the health of registered services, notices when one is
+degraded or down, opens and tracks an incident until recovery, keeps the team and
+customers informed (operator dashboard + public status page + webhook notifications),
+and proves reliability against each service's target.
 
-## Technology stack
+**Outcome that matters:** bad minutes turn into known incidents in seconds, with a
+timeline everyone can read — and a number the team can be held to.
 
-- **Python 3.12** — FastAPI + Uvicorn (web), httpx (async checks/notifications)
-- **Jinja2** server-rendered templates (no JS build step)
-- **SQLite** (WAL mode, single guarded connection, reentrant lock)
-- **pytest + pytest-asyncio** — unit, integration (stub servers), acceptance
-- **Docker / Compose** — starter kit services; optional Pulse container
+## Questions I asked the product owner (and answers/assumptions)
 
-## Main components & features
-
-| Component | File(s) | What it does |
+| # | Question | Answer / assumption |
 |---|---|---|
-| Service catalogue | `store.py`, `api/routes.py`, dashboard form | CRUD via API + UI; seeded with the kit's 4 services (`seed.py`) |
-| Health checker | `checker.py` | Per-request timeout, latency, error classes; raw detail kept internal |
-| State machine | `state.py` | Pure function; thresholds per service (`failures_to_down=3`, `successes_to_recover=2`, `degraded_latency_ms`) |
-| Scheduler | `scheduler.py` | One asyncio task per service; restart-safe state re-derivation |
-| Incidents | `incidents.py`, `store.py` | Auto-open on down, auto-resolve on recovery, ack/notes, append-only timeline |
-| Notifications | `notifier.py` | Sanitized JSON payloads on open/resolve; 3 attempts + backoff; delivery log |
-| Reliability | `reliability.py` | Check-weighted uptime % per window vs target; error budget used/remaining |
-| Metrics | `metrics.py` | MTTD, MTTR, checker success/latency percentiles, notification delivery rate |
-| Operator UI | `web/routes.py`, templates | Dashboard, service detail, incident timeline + actions |
-| Public status | `/status`, `/api/status` | Read-only, sanitized, plain-English states |
-| JSON API | `api/routes.py` | Services CRUD, incidents (+ack/notes/resolve), status, metrics |
+| Q1 | Does a *degraded* service (slow or flaky) open an incident, or only "down"? | Pending → **assumption**: only `down` opens an incident; degradation is shown on the dashboard and added to the incident timeline if one is open. Rationale: paging someone for a 2-minute slow patch is noisy; but degraded state must still be *visible*. |
+| Q2 | What should the public status page show when a service is down? | Pending → **assumption**: plain-English status ("Not working right now — we're on it"), **never** internal error text. The kit deliberately plants internal error strings (`upstream claims-db timeout at 10.12.4.7:5432`); leaking them to customers is the trap. |
+| Q3 | Default check interval and reliability target? | Pending → **assumption**: every 5 s, target 99.9%, both editable per service in the catalogue. |
+| Q4 | How many failed checks before we call it "down"? | Pending → **assumption**: 3 consecutive (≈15 s at default interval) to down; 2 consecutive successes to recover. Avoids paging on one blip. |
+| Q5 | Who can ack/resolve — do we need login? | Pending → **assumption**: no login in this version (single-operator tool); recorded as a deliberate scope cut. |
+| Q6 | Where do notifications go? | The starter kit's webhook receiver stands in for chat/email; payload format is my choice → JSON with `event`, `service`, `incident_id`, timestamps, sanitized `summary`. |
 
-## Implementation phases
+*(Owner answers will be appended to the decision log as they arrive; every "your call"
+above is also recorded in `DECISIONS.md` with a timestamp.)*
 
-1. **Scaffold & plan** — repo, `PLAN.md`, `DECISIONS.md`, schema, config ✅
-2. **Core logic** — checker, pure state machine, unit tests ✅
-3. **Runtime loop** — scheduler, incident engine, notifier, seeding ✅
-4. **Web & API** — dashboard, status page, metrics pages, JSON API, reliability ✅
-5. **Verification** — integration suite (stub kit/webhook), acceptance vs real kit ✅
-6. **Docs & handover** — README, REVIEW, PROGRESS, transcript export ✅
+## What I learned from real products
 
-## Testing strategy
+- **Atlassian Statuspage** (public status pages): customers get plain-English component
+  status + a history of past incidents; internal detail never appears publicly. → I copy
+  the "sanitized public surface" rule and the incident-history pattern.
+- **Uptime Kuma** (self-hosted monitoring): per-monitor check intervals/timeouts,
+  heartbeat storage, "down × N flips state" logic. → I copy per-service schedules and
+  consecutive-failure thresholds.
+- **Healthchecks.io**: every check attempt is stored, and SLA windows are computed from
+  raw attempts. → I store every check result (not just transitions) so reliability and
+  metrics are computed from data, not fabricated.
+- **PagerDuty incident model**: incidents have a lifecycle (triggered → acknowledged →
+  resolved) and an immutable timeline of events. → I copy open → ack → resolve + events.
 
-- **Unit (46)** — state machine transitions (flaky/slow/recovery), reliability and
-  error-budget math, sanitizer guarantees, webhook payload shape, API contract
-  (`TestClient`), navigation regression (no 0-second reload loops, links present).
-- **Integration (8)** — real asyncio + stub kit/webhook: down→incident→sanitized
-  webhook, recovery→resolve→webhook, ack/note timeline, every check stored.
-- **Acceptance (9, `pytest -m acceptance`)** — against the running starter kit;
-  auto-skipped when the kit/Pulse aren't up. Includes the leak check: the kit's
-  internal error IP must never appear on `/status`, `/api/status`, or webhook payloads.
-- **Run:** `python -m pytest tests -q` (54) · `… -m acceptance` (9) ·
-  `scripts/verify_nav.py` (live nav) · `scripts/acceptance.sh` (POSIX variant).
+## What I will build (must-haves first) and what I leave out
 
-## Deployment steps
+**In scope (must-haves 1–10, in build order):**
 
-```bash
-# 1. Starter kit (mock services :7001–7004, webhook receiver :9900)
-cd pulse-starter-kit && docker compose up --build -d
+1. Service catalogue (API + UI), seeded with the kit's 4 mock services.
+2. Health checking: one asyncio task per service (own interval/timeout), every result stored.
+3. Service state: `healthy / degraded / down / unknown` from a pure state-machine function.
+4. Incidents: auto-open on down, ack + notes, auto-resolve on recovery, timeline events.
+5. Reliability: uptime % over 1 h / 24 h / 7 d vs target + error-budget remaining.
+6. Operator dashboard: states, latency, incidents, timelines, actions.
+7. Public status page: read-only, sanitized.
+8. Notifications: webhook POST on open + resolve, logged with retries.
+9. Product metrics: MTTD, MTTR, check success/latency, notification delivery rate.
+10. Runnable: kit `docker compose up` + `python run.py` (or Pulse in Docker), README.
 
-# 2. Pulse (default port 8001; 8000 commonly clashes on dev machines)
-cd pulse
-pip install -r requirements.txt
-python run.py
+**Out of scope (with reasons):**
+
+- Login/auth for the operator view — single-user demo tool; time better spent on tests.
+- Non-HTTP checks (TCP/DB) — the kit only offers HTTP health endpoints.
+- Customer subscriptions to status updates — needs a real email/chat provider.
+- Kubernetes/multi-instance deployment — laptop Docker is explicitly sufficient.
+- AI-written incident summaries — only if everything else is done and verified.
+
+## System design sketch
+
+```
+                 ┌────────────────────────── Pulse app ──────────────────────────┐
+                 │                                                               │
+ mock services ──┼─► Scheduler: one asyncio task per service (isolated checks)   │
+ :7001–7004      │      └► Checker (httpx GET /health, per-request timeout)      │
+                 │          └► State machine (pure function over recent checks)  │
+                 │              ├► Incident engine (open/ack/notes/resolve)      │
+                 │              ├► Reliability calc (windows vs target, budget)  │
+                 │              └► Notifier (webhook POST, retries, logged)      │
+                 │                                                               │
+                 │   FastAPI: JSON API + server-rendered UI (Jinja2)             │
+                 └──────────────────────────── SQLite ───────────────────────────┘
 ```
 
-- Optional container: `docker compose up --build` in `pulse/` (targets
-  `host.docker.internal`).
-- Config via env: `PULSE_PORT`, `PULSE_DB`, `PULSE_WEBHOOK_URL`,
-  `PULSE_TARGET_BASE`, `PULSE_SEED`.
-- Verify: open `http://localhost:8001/`; break a service with
-  `curl -X POST localhost:7003/control/down`; watch incident + webhook at `:9900`.
+Key choices: single process + SQLite (one command to run, zero infrastructure);
+state machine is a **pure function** `(recent_results, thresholds) → state` so it is
+unit-testable without Docker; every check stored; one sanitizer choke-point so internal
+error text can never reach the public page.
 
-## Future improvements
+## Data model
 
-- **Flap suppression** (analysed in `DECISIONS.md`): reopen-window so rapid down/up
-  cycles extend one incident instead of creating new ones.
-- Operator authentication; per-tenant views.
-- Non-HTTP checks (TCP/DB) and richer notification targets (email/chat routing).
-- Customer subscriptions to status updates.
-- Postgres + separate worker process for multi-instance scale.
+```
+services(id, name UNIQ, health_url, interval_s, timeout_s, degraded_latency_ms,
+         failures_to_down, successes_to_recover, owner, target_pct, webhook_url,
+         enabled, created_at)
+checks(id, service_id→services CASCADE, ts, ok, status_code, latency_ms,
+       error_class,            -- safe token: timeout | conn_refused | http_5xx | …
+       error_detail)           -- INTERNAL ONLY: raw message, never leaves /api/operator surfaces
+incidents(id, service_id→services CASCADE, opened_at, resolved_at, acked_at,
+          state open|acknowledged|resolved, detected_after_s)   -- MTTD captured at open
+incident_events(id, incident_id→incidents CASCADE, ts, kind, message)  -- append-only timeline
+notifications(id, incident_id→incidents SET NULL, event, target_url, payload,
+              response_code, ok, attempts, ts)
+```
+
+## Main screens
+
+1. `/` Operator dashboard — table of services (state badge, last latency, uptime 24 h vs
+   target), current incidents; auto-refresh.
+2. `/services/{id}` — config, reliability windows + error budget, last checks, incidents.
+3. `/incidents/{id}` — timeline, Ack button, note form, Resolve button.
+4. `/status` — public page: big per-service status cards, recent history; sanitized.
+5. `/metrics` — MTTD, MTTR, checker performance, notification delivery.
+
+## Test plan
+
+- **Unit** (no network, no Docker): state-machine transitions (fresh data, flaky mixes,
+  slow latency, recovery streaks); reliability/error-budget math; sanitizer guarantees;
+  webhook payload shape (no internal detail); catalogue validation.
+- **Integration** (in-process, real asyncio): a stub HTTP service that can go
+  down/slow/flaky on demand + a stub webhook → run the real checker→state→incident→
+  notifier pipeline and assert DB rows, webhook payloads, retry behaviour.
+- **Acceptance** (against the real starter kit, skipped if the kit isn't running):
+  `control/down` on claims → incident opens + webhook receiver shows the notification;
+  `control/reset` → incident resolves; the public status output never contains the kit's
+  planted internal error string; `incident-drill.sh --fast` as the demo script.
+
+## Metrics that will show the product works
+
+- **MTTD** — time from last good check to incident opened (target: < 1 check-interval × failures_to_down).
+- **MTTR** — incident open → resolved.
+- Check success rate + check latency (is the checker itself healthy?).
+- Notification delivery rate (did the support team get told?).
+- Uptime % vs target per service with error-budget remaining.

@@ -2,10 +2,10 @@
 import asyncio
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from .. import metrics, reliability, store
+from .. import auth, metrics, reliability, store, users
 from ..checker import friendly
 from ..main import pulse
 from ..util import to_ist
@@ -50,6 +50,28 @@ class NoteIn(BaseModel):
     note: str = Field(min_length=1, max_length=2000)
 
 
+_EMAIL_RE = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+
+
+class LoginIn(BaseModel):
+    email: str = Field(min_length=3, max_length=200, pattern=_EMAIL_RE)
+    password: str = Field(min_length=1, max_length=200)
+
+
+class UserIn(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    email: str = Field(min_length=3, max_length=200, pattern=_EMAIL_RE)
+    password: str = Field(min_length=8, max_length=200)
+    role: str = Field(default="operator", pattern="^(admin|operator|viewer)$")
+
+
+class RegisterIn(BaseModel):
+    """Self-service registration (no role field: sign-ups always get 'operator')."""
+    name: str = Field(min_length=1, max_length=100)
+    email: str = Field(min_length=3, max_length=200, pattern=_EMAIL_RE)
+    password: str = Field(min_length=8, max_length=200)
+
+
 # --------------------------------------------------------------------- helpers
 
 def _service_view(service: dict) -> dict:
@@ -75,6 +97,46 @@ def _last_error_class(service_id: int) -> str:
     return with_error[0]["error_class"] if with_error else "none"
 
 
+# --------------------------------------------------------------------- auth
+
+@router.post("/login")
+def login(body: LoginIn, request: Request) -> dict:
+    user = users.get_user_by_email(body.email)
+    if user is None or not users.verify_password(body.password, user["password_hash"]):
+        raise HTTPException(401, "invalid email or password")
+    auth.login_session(request, user)
+    return users.public_user(user)
+
+
+@router.post("/logout")
+def logout(request: Request) -> dict:
+    auth.logout_session(request)
+    return {"ok": True}
+
+
+@router.get("/me")
+def me(request: Request) -> dict:
+    return users.public_user(auth.require_api_user(request))
+
+
+@router.post("/register", status_code=201)
+def register(body: RegisterIn, request: Request) -> dict:
+    """Create an operator account and sign the new user in."""
+    user = users.register_user(body.name, body.email, body.password)
+    if user is None:
+        raise HTTPException(409, "email already registered — try signing in instead")
+    auth.login_session(request, user)
+    return users.public_user(user)
+
+
+@router.post("/users", status_code=201)
+def create_user(data: UserIn, admin: dict = Depends(auth.require_admin)) -> dict:
+    user = users.create_user(data.name, data.email, data.password, data.role)
+    if user is None:
+        raise HTTPException(409, f"email '{data.email}' already registered")
+    return users.public_user(user)
+
+
 # --------------------------------------------------------------------- catalogue
 
 @router.get("/services")
@@ -83,7 +145,7 @@ def list_services() -> list[dict]:
 
 
 @router.post("/services", status_code=201)
-async def create_service(data: ServiceIn) -> dict:
+async def create_service(data: ServiceIn, user: dict = Depends(auth.require_api_user)) -> dict:
     if store.get_service_by_name(data.name):
         raise HTTPException(409, f"service '{data.name}' already exists")
     service = store.create_service(data.model_dump())
@@ -105,7 +167,8 @@ def get_service(service_id: int) -> dict:
 
 
 @router.patch("/services/{service_id}")
-async def update_service(service_id: int, patch: ServicePatch) -> dict:
+async def update_service(service_id: int, patch: ServicePatch,
+                         user: dict = Depends(auth.require_api_user)) -> dict:
     if store.get_service(service_id) is None:
         raise HTTPException(404, "service not found")
     fields = {k: v for k, v in patch.model_dump().items() if v is not None or k == "enabled"}
@@ -116,7 +179,7 @@ async def update_service(service_id: int, patch: ServicePatch) -> dict:
 
 
 @router.delete("/services/{service_id}", status_code=204)
-async def delete_service(service_id: int) -> None:
+async def delete_service(service_id: int, user: dict = Depends(auth.require_api_user)) -> None:
     if store.get_service(service_id) is None:
         raise HTTPException(404, "service not found")
     if pulse.scheduler:
@@ -179,7 +242,7 @@ def get_incident(incident_id: int) -> dict:
 
 
 @router.post("/incidents/{incident_id}/ack")
-async def ack_incident(incident_id: int) -> dict:
+async def ack_incident(incident_id: int, user: dict = Depends(auth.require_api_user)) -> dict:
     from ..incidents import ack as do_ack
     incident = await do_ack(incident_id)
     if incident is None:
@@ -188,7 +251,8 @@ async def ack_incident(incident_id: int) -> dict:
 
 
 @router.post("/incidents/{incident_id}/notes")
-async def add_note(incident_id: int, body: NoteIn) -> dict:
+async def add_note(incident_id: int, body: NoteIn,
+                   user: dict = Depends(auth.require_api_user)) -> dict:
     if store.get_incident(incident_id) is None:
         raise HTTPException(404, "incident not found")
     incident = await _note(incident_id, body.note)
@@ -201,7 +265,8 @@ async def _note(incident_id: int, note: str) -> dict | None:
 
 
 @router.post("/incidents/{incident_id}/resolve")
-async def resolve_incident(incident_id: int) -> dict:
+async def resolve_incident(incident_id: int,
+                           user: dict = Depends(auth.require_api_user)) -> dict:
     if store.get_incident(incident_id) is None:
         raise HTTPException(404, "incident not found")
     engine = pulse.engine

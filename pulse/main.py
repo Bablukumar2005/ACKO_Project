@@ -1,12 +1,14 @@
 """FastAPI wiring: app factory, scheduler lifecycle, shared singletons."""
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import FastAPI
+from starlette.middleware.sessions import SessionMiddleware
 
-from . import db, seed
+from . import config, db, seed, users
 from .incidents import IncidentEngine
 from .notifier import Notifier
 from .scheduler import Scheduler
@@ -34,6 +36,7 @@ pulse = Pulse()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.connect()
+    users.ensure_bootstrap_admin()
     if seed_enabled():
         seed.seed_if_empty()
     pulse.http = httpx.AsyncClient()
@@ -56,6 +59,10 @@ def seed_enabled() -> bool:
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Pulse", version="1.0.0", lifespan=lifespan)
+    if not os.environ.get("PULSE_SECRET"):
+        log.warning("PULSE_SECRET not set — using a per-process random session key "
+                    "(logins reset on restart; set PULSE_SECRET to persist them)")
+    app.add_middleware(SessionMiddleware, secret_key=config.SECRET, max_age=86400)
     from .api import routes as api_routes
     from .web import routes as web_routes
     app.include_router(api_routes.router, prefix="/api")

@@ -6,15 +6,38 @@ import pytest
 
 from pulse import store
 
+TEST_ADMIN_PASSWORD = "test-admin-pass-123"
+
+
+def _bootstrap_admin(monkeypatch):
+    """Deterministic bootstrap admin (no lifespan involved in unit tests)."""
+    from pulse import config, users
+    monkeypatch.setattr(config, "ADMIN_PASSWORD", TEST_ADMIN_PASSWORD)
+    users.ensure_bootstrap_admin()
+
 
 @pytest.fixture()
 def client(in_memory_db, monkeypatch):
-    """App without lifespan (no scheduler running); state defaults to 'unknown'."""
-    from pulse import main
-
+    """Logged-in app without lifespan (no scheduler running)."""
+    from pulse import config, main
+    _bootstrap_admin(monkeypatch)
     app = main.create_app()
     monkeypatch.setattr(main, "seed_enabled", lambda: False)
-    return TestClient(app)
+    c = TestClient(app, follow_redirects=True)
+    r = c.post("/api/login", json={"email": config.ADMIN_EMAIL,
+                                   "password": TEST_ADMIN_PASSWORD})
+    assert r.status_code == 200, r.text
+    return c
+
+
+@pytest.fixture()
+def anon_client(in_memory_db, monkeypatch):
+    """Fresh app with a bootstrap admin, but NOT logged in; no redirects followed."""
+    from pulse import main
+    _bootstrap_admin(monkeypatch)
+    app = main.create_app()
+    monkeypatch.setattr(main, "seed_enabled", lambda: False)
+    return TestClient(app, follow_redirects=False)
 
 
 def make_service():

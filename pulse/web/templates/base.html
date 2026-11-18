@@ -58,6 +58,38 @@
   .row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
   .row > div { flex: 1; min-width: 160px; }
   footer { text-align: center; color: var(--muted); font-size: 12px; padding: 30px 0 16px; }
+  .error { color: var(--bad); background: var(--bad-bg); padding: 10px 14px; border-radius: 8px; }
+  /* ---- auth pages (login / signup) ---- */
+  .auth-wrap { min-height: calc(100vh - 140px); display: flex; align-items: flex-start; justify-content: center; padding: 44px 16px; }
+  .auth-card { width: 100%; max-width: 420px; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 28px 28px 22px; box-shadow: 0 8px 24px rgba(16,24,40,.07); }
+  .auth-card h1 { font-size: 20px; margin: 0 0 4px; }
+  .auth-card .sub { color: var(--muted); font-size: 14px; margin: 0 0 18px; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px; }
+  .field input { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 15px; width: 100%; transition: border-color .15s, box-shadow .15s; }
+  .field input:focus { outline: none; border-color: #0b57d0; box-shadow: 0 0 0 3px rgba(11,87,208,.13); }
+  .field.invalid input { border-color: var(--bad); }
+  .field .msg { color: var(--bad); font-size: 12.5px; margin-top: 5px; }
+  .field .hint { color: var(--muted); font-size: 12.5px; margin-top: 5px; }
+  .field .hint.ok { color: var(--ok); }
+  .pw-wrap { position: relative; }
+  .pw-wrap input { padding-right: 46px; }
+  .pw-toggle { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); border: 0; background: transparent; cursor: pointer; font-size: 15px; padding: 6px 8px; color: var(--muted); border-radius: 6px; line-height: 1; }
+  .pw-toggle:hover { background: #f0f2f4; }
+  .btn-primary { display: block; width: 100%; background: #101828; color: #fff; border: 0; border-radius: 8px; padding: 11px 16px; font-size: 15px; font-weight: 600; cursor: pointer; margin-top: 6px; transition: background .15s; }
+  .btn-primary:hover { background: #1d2b44; }
+  .banner { color: var(--bad); background: var(--bad-bg); border: 1px solid #f3c1bd; padding: 10px 12px; border-radius: 8px; font-size: 14px; margin-bottom: 16px; }
+  .auth-alt { text-align: center; font-size: 14px; color: var(--muted); margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+  .auth-alt a { font-weight: 600; }
+  header form { display: inline; margin-left: auto; }
+  header button { background: transparent; color: #cdd6e1; border: 1px solid #3b4757; font-size: 13px; padding: 4px 12px; }
+  header button:hover { color: #fff; border-color: #5a6675; }
+  @media (max-width: 600px) {
+    header { flex-wrap: wrap; gap: 10px; padding: 10px 14px; }
+    main { margin: 16px auto; }
+    .auth-wrap { padding: 20px 12px; }
+    .auth-card { padding: 22px 18px 16px; }
+  }
 </style>
 </head>
 <body>
@@ -68,10 +100,14 @@
   <a href="/status">Public status</a>
   <a href="/metrics">Metrics</a>
   {% endblock %}
+  {% if user %}
+  <form method="post" action="/logout"><button type="submit">Logout ({{ user.name }})</button></form>
+  {% endif %}
 </header>
 <main>
 {% block content %}{% endblock %}
 </main>
 <footer>Pulse — status &amp; incident hub</footer>
+{% block scripts %}{% endblock %}
 </body>
 </html>
