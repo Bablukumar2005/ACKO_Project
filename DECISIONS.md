@@ -114,3 +114,31 @@ Each entry: time (IST on 2026-11-18), the decision, why, and alternatives consid
   records.
 - **Why:** check-weighted is simple, explainable, and computed from stored attempts;
   per-second state modelling is overkill for a 5 s interval.
+
+## 19:00 — Flapping: documented as a known limitation, not fixed today
+
+- **Decision:** a service that repeatedly goes down and recovers (flapping) currently
+  opens a NEW incident and fires a NEW webhook for every down/up cycle. We keep this
+  behaviour and document it, rather than implementing flap suppression.
+- **The failure mode, quantified:** with defaults (3 fails to down, 2 oks to recover,
+  5 s interval) a full flap cycle is ≥ 25 s, so worst case ≈ 120 incidents and
+  ~240 webhook deliveries per hour for one service. Two of the three consequences are
+  harmful: support-team alert fatigue (defeats the product's purpose) and a
+  misleadingly excellent MTTR (~25 s median) for a catastrophically unstable service.
+  The third is correct: uptime % and the error budget truthfully crater.
+- **What already limits the damage:** notifications fire only on open/resolve, so
+  down→degraded→down wobbles create no duplicates or pings; every cycle still appends
+  to a real timeline; reliability math stays honest.
+- **The design we would implement (validated against PagerDuty/Nagios practice):**
+  (1) reopen-window — if the service goes down again within `flap_window_s`
+  (default 120 s, per service) of resolving, reopen the SAME incident
+  (increment `reopen_count`, append "flapped down again (cycle #n)"), no new webhook;
+  a down after the quiet window opens a fresh incident. (2) resolve summary reports
+  "recovered after n flap cycles over Xm". (3) metrics: MTTR spans the whole unstable
+  episode, plus a flap-stats row. (4) status page: "Having intermittent problems"
+  wording when the open incident has reopen_count > 0, instead of strobing Up/Down.
+  Estimated effort: ~1 hour including tests.
+- **Why not now:** the must-have set is complete and verified (51 unit/integration +
+  9 acceptance tests); this is an edge-condition refinement. Shipping it half-tested
+  would risk the working core for a scenario the kit's drill does not exercise.
+  We chose to spend the remaining time on demo preparation and documentation.

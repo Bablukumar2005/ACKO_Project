@@ -21,6 +21,13 @@ computed from stored raw checks, so the numbers are real, not fabricated.
 - **`flaky` at high rates can open an incident** (3 consecutive failures) — I consider
   this correct-by-design (an incident IS happening), but a "flap suppression" rule
   (e.g. cooldown before re-opening) would reduce incident spam in long outages.
+- **Flapping (the biggest known gap, analysed in DECISIONS.md 19:00):** a service that
+  rapidly cycles down/up opens a new incident + webhook per cycle (~120 incidents/hour
+  worst case at default settings). Alert fatigue for support is the real harm; MTTR
+  also becomes misleadingly small. The planned fix is PagerDuty-style: reopen the same
+  incident within a 120 s quiet window instead of opening a new one, suppress the
+  duplicate webhooks, and show "intermittent problems" on the status page. Uptime %
+  and the error budget stay truthful throughout — the service really is unreliable.
 - **SQLite + one process** — fine for the demo scale (4 services × 17k checks/day),
   but I'd move to Postgres + a separate worker before calling it production-ready.
 - **Availability is check-weighted** (fraction of failed checks), not second-weighted

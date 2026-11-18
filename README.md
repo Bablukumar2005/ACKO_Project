@@ -144,7 +144,9 @@ GET             /api/metrics             MTTD, MTTR, checker perf, delivery rate
 Works: everything in the table at the top, verified by 51 unit/integration tests and
 9 acceptance tests against the real starter kit. Doesn't (yet): operator login,
 non-HTTP checks, customer subscriptions, AI summaries — deliberate scope cuts, see
-`PLAN.md`/`DECISIONS.md`.
+`PLAN.md`/`DECISIONS.md`. **Known limitation:** a rapidly flapping service (down/up
+cycles shorter than ~2 min) opens a new incident per cycle; the planned reopen-window
+fix is analysed and quantified in `DECISIONS.md`.
 
 ## Project docs
 
