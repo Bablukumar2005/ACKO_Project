@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Acko service status{% endblock %}
+{% block nav %}{% endblock %}
+{% block content %}
+<h1>Acko service status</h1>
+<p class="muted">Live health of Acko's customer-facing services. Refreshes every 10 seconds.</p>
+
+<div class="status-hero">
+  {% for s in services %}
+  <div class="status-tile st-{{ s.state }}">
+    <div><strong style="font-size:16px">{{ s.name }}</strong>
+      <div class="muted">{{ s.friendly }}</div></div>
+    <div style="text-align:right">
+      <span class="badge b-{{ s.state }}">{{ state_label(s.state) }}</span>
+      <div class="muted">uptime 24 h:
+        {% if s.uptime_24h is not none %}{{ "%.2f" | format(s.uptime_24h) }}%{% else %}—{% endif %}
+        (target {{ s.target_pct }}%)</div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<h2>Recent incident history</h2>
+<table>
+  <tr><th>Service</th><th>Started (IST)</th><th>Status</th></tr>
+  {% for i in recent %}
+  <tr>
+    <td>{{ i.service }}</td>
+    <td>{{ i.opened_ist }}</td>
+    <td>{% if i.resolved %}<span class="badge b-resolved">Resolved {{ i.resolved_ist }}</span>
+        {% else %}<span class="badge b-open">Being worked on</span>{% endif %}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="3" class="muted">No incidents in recent history. All good.</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

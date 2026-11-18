@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Metrics — Pulse{% endblock %}
+{% block content %}
+<h1>Product metrics</h1>
+<p class="muted">How quickly Pulse detects and resolves problems, and how well the checker itself performs.</p>
+
+<h2>Detection &amp; resolution (24 h)</h2>
+<div class="cards grid">
+  <div class="card"><div class="muted">Incidents</div>
+    <div class="big">{{ metrics.incidents.total }}</div>
+    <div class="muted">{{ metrics.incidents.open }} open · {{ metrics.incidents.acknowledged }} acked · {{ metrics.incidents.resolved }} resolved</div></div>
+  <div class="card"><div class="muted">MTTD — time to detect</div>
+    <div class="big">{{ metrics.detection_resolution.mttd_human }}</div>
+    <div class="muted">median, from last good check to incident open</div></div>
+  <div class="card"><div class="muted">MTTR — time to recover</div>
+    <div class="big">{{ metrics.detection_resolution.mttr_human }}</div>
+    <div class="muted">median, from open to resolved</div></div>
+</div>
+
+<h2>Checker performance (1 h)</h2>
+<div class="cards grid">
+  <div class="card"><div class="muted">Checks run</div>
+    <div class="big">{{ metrics.checker.checks }}</div></div>
+  <div class="card"><div class="muted">Success rate</div>
+    <div class="big">{{ metrics.checker.success_rate_pct if metrics.checker.success_rate_pct is not none else "—" }}%</div></div>
+  <div class="card"><div class="muted">Check latency p50 / p95 / p99</div>
+    <div class="big" style="font-size:18px">
+      {{ metrics.checker.p50_ms if metrics.checker.p50_ms is not none else "—" }} /
+      {{ metrics.checker.p95_ms if metrics.checker.p95_ms is not none else "—" }} /
+      {{ metrics.checker.p99_ms if metrics.checker.p99_ms is not none else "—" }} ms</div></div>
+</div>
+
+<h2>Notification delivery (24 h)</h2>
+<div class="cards grid">
+  <div class="card"><div class="muted">Sent</div>
+    <div class="big">{{ metrics.notifications.total }}</div></div>
+  <div class="card"><div class="muted">Delivered</div>
+    <div class="big">{{ metrics.notifications.delivered }}</div></div>
+  <div class="card"><div class="muted">Delivery rate</div>
+    <div class="big">{% if metrics.notifications.delivery_rate_pct is not none %}{{ metrics.notifications.delivery_rate_pct }}%{% else %}—{% endif %}</div>
+    <div class="muted">to the chat/email webhook</div></div>
+</div>
+{% endblock %}

@@ -1,0 +1,21 @@
+# Pulse in Docker (optional — `python run.py` on the host is enough).
+# docker compose up --build      then open http://localhost:8000
+#
+# host.docker.internal lets the container reach the kit's mock services
+# and webhook receiver running on the host (add extra_hosts for Linux).
+services:
+  pulse:
+    build: .
+    environment:
+      PULSE_HOST: 0.0.0.0
+      PULSE_DB: /app/data/pulse.db
+      PULSE_TARGET_BASE: http://host.docker.internal
+      PULSE_WEBHOOK_URL: http://host.docker.internal:9900
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8000:8000"
+    volumes:
+      - pulse-data:/app/data
+volumes:
+  pulse-data:

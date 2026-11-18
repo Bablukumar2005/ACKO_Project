@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Incident #{{ incident.id }} — Pulse{% endblock %}
+{% block content %}
+<h1>Incident #{{ incident.id }} — {{ service.name if service else "?" }}
+    <span class="badge b-{{ incident.state }}">{{ incident.state }}</span></h1>
+<p class="muted">
+  Opened {{ incident.opened_at | ist }}
+  {% if incident.acked_at %}· acknowledged {{ incident.acked_at | ist }}{% endif %}
+  {% if incident.resolved_at %}· resolved {{ incident.resolved_at | ist }}{% endif %}
+  {% if incident.detected_after_s is not none %}· detected {{ "%.0f" | format(incident.detected_after_s) }}s after last good check{% endif %}
+</p>
+
+<div class="row card" style="margin:14px 0">
+  {% if incident.resolved_at %}
+    <div class="muted">This incident is resolved.</div>
+  {% else %}
+    <div style="flex:0">
+      <form method="post" action="/incidents/{{ incident.id }}/ack" class="inline">
+        <button type="submit" {% if incident.acked_at %}disabled{% endif %}>Acknowledge</button>
+      </form>
+    </div>
+    <div style="flex:0">
+      <form method="post" action="/incidents/{{ incident.id }}/resolve" class="inline">
+        <button type="submit">Resolve</button>
+      </form>
+    </div>
+    <div style="flex:3">
+      <form method="post" action="/incidents/{{ incident.id }}/note" class="row">
+        <div style="flex:3"><input name="note" placeholder="Add a note for the timeline…" required></div>
+        <div style="flex:0"><button type="submit">Add note</button></div>
+      </form>
+    </div>
+  {% endif %}
+</div>
+
+<h2>Timeline</h2>
+<ul class="timeline">
+  {% for e in events %}
+  <li><span class="kind">{{ e.kind }}</span><strong>{{ e.ts_ist }}</strong> — {{ e.message }}</li>
+  {% endfor %}
+</ul>
+
+<h2>Notifications</h2>
+<table>
+  <tr><th>Event</th><th>Target</th><th>Delivered</th><th>HTTP</th><th>Attempts</th><th>When</th></tr>
+  {% for n in notifications %}
+  <tr>
+    <td>{{ n.event }}</td>
+    <td class="muted">{{ n.target_url }}</td>
+    <td>{% if n.ok %}<span class="badge b-healthy">yes</span>{% else %}<span class="badge b-down">no</span>{% endif %}</td>
+    <td>{{ n.response_code if n.response_code else "—" }}</td>
+    <td>{{ n.attempts }}</td>
+    <td>{{ n.ts | ist }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="6" class="muted">No notifications for this incident.</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

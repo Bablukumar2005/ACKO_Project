@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="refresh" content="{{ refresh | default(0) }}">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Pulse{% endblock %}</title>
+<style>
+  :root {
+    --ok: #0f7b3e; --ok-bg: #e6f6ec;
+    --warn: #9a6700; --warn-bg: #fff5df;
+    --bad: #b3261e; --bad-bg: #fdeceb;
+    --unknown: #57606a; --unknown-bg: #f0f2f4;
+    --ink: #17202a; --muted: #57606a; --line: #d8dee4;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; color: var(--ink); background: #fafbfc; }
+  header { background: #101828; color: #fff; padding: 10px 24px; display: flex; align-items: center; gap: 20px; }
+  header a { color: #cdd6e1; text-decoration: none; font-size: 14px; }
+  header a:hover { color: #fff; }
+  header .brand { font-weight: 700; font-size: 18px; color: #fff; letter-spacing: .3px; }
+  main { max-width: 1100px; margin: 24px auto; padding: 0 20px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 28px 0 8px; }
+  .muted { color: var(--muted); font-size: 13px; }
+  table { border-collapse: collapse; width: 100%; background: #fff; border: 1px solid var(--line); }
+  th, td { border-bottom: 1px solid var(--line); padding: 8px 10px; text-align: left; font-size: 14px; }
+  th { background: #f6f8fa; font-weight: 600; font-size: 13px; }
+  tr:last-child td { border-bottom: 0; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+  .b-healthy  { background: var(--ok-bg);  color: var(--ok); }
+  .b-degraded { background: var(--warn-bg); color: var(--warn); }
+  .b-down     { background: var(--bad-bg); color: var(--bad); }
+  .b-unknown  { background: var(--unknown-bg); color: var(--unknown); }
+  .b-open     { background: var(--bad-bg); color: var(--bad); }
+  .b-acknowledged { background: var(--warn-bg); color: var(--warn); }
+  .b-resolved { background: var(--ok-bg); color: var(--ok); }
+  a { color: #0b57d0; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  button, .btn { background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 6px 14px; font-size: 14px; cursor: pointer; }
+  button:hover { background: #f6f8fa; }
+  form.inline { display: inline; }
+  input, textarea { border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; font-size: 14px; width: 100%; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+  .card .big { font-size: 24px; font-weight: 700; margin: 2px 0; }
+  .cards { margin: 14px 0; }
+  .status-hero { display: grid; gap: 10px; margin: 18px 0; }
+  .status-tile { border-radius: 10px; padding: 16px 18px; border: 1px solid var(--line); background: #fff; display: flex; justify-content: space-between; align-items: center; }
+  .st-healthy  { border-left: 6px solid var(--ok); }
+  .st-degraded { border-left: 6px solid var(--warn); }
+  .st-down     { border-left: 6px solid var(--bad); }
+  .st-unknown  { border-left: 6px solid var(--unknown); }
+  .timeline { list-style: none; padding: 0; margin: 0; }
+  .timeline li { border-left: 2px solid var(--line); margin-left: 6px; padding: 6px 14px; position: relative; }
+  .timeline li::before { content: ""; position: absolute; left: -6px; top: 12px; width: 10px; height: 10px; border-radius: 50%; background: #fff; border: 2px solid var(--muted); }
+  .timeline .kind { font-weight: 600; font-size: 12px; text-transform: uppercase; color: var(--muted); margin-right: 8px; }
+  .row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+  .row > div { flex: 1; min-width: 160px; }
+  footer { text-align: center; color: var(--muted); font-size: 12px; padding: 30px 0 16px; }
+</style>
+</head>
+<body>
+<header>
+  <span class="brand">◉ Pulse</span>
+  {% block nav %}
+  <a href="/">Dashboard</a>
+  <a href="/status">Public status</a>
+  <a href="/metrics">Metrics</a>
+  {% endblock %}
+</header>
+<main>
+{% block content %}{% endblock %}
+</main>
+<footer>Pulse — status &amp; incident hub</footer>
+</body>
+</html>

@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}{{ service.name }} — Pulse{% endblock %}
+{% block content %}
+<h1>{{ service.name }} <span class="badge b-{{ state }}">{{ state_label(state) }}</span></h1>
+<p class="muted">{{ service.owner or "no owner" }} · checks {{ service.health_url }} every {{ service.interval_s | int }}s · target {{ service.target_pct }}%</p>
+
+<h2>Reliability vs target</h2>
+<table>
+  <tr><th>Window</th><th>Checks</th><th>Uptime</th><th>Target</th><th>Error budget</th><th>Avg / max latency</th></tr>
+  {% for w in reliability %}
+  <tr>
+    <td>{{ w.window_label }}</td>
+    <td>{{ w.total }}</td>
+    <td>{% if w.uptime_pct is not none %}{{ "%.2f" | format(w.uptime_pct) }}%
+      {% if not w.meets_target %}<span class="badge b-down">below</span>{% endif %}{% else %}—{% endif %}</td>
+    <td>{{ w.target_pct }}%</td>
+    <td>{% if w.total %}{{ w.used_seconds }}s used of {{ w.budget_seconds }}s ({{ w.remaining_seconds }}s left){% else %}—{% endif %}</td>
+    <td>{% if w.avg_latency_ms is not none %}{{ w.avg_latency_ms }} / {{ w.max_latency_ms }} ms{% else %}—{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table>
+
+<h2>Recent checks</h2>
+<table>
+  <tr><th>Time (IST)</th><th>Result</th><th>Status</th><th>Latency</th><th>Detail</th></tr>
+  {% for c in checks %}
+  <tr>
+    <td>{{ c.ts_ist }}</td>
+    <td>{% if c.ok %}<span class="badge b-healthy">ok</span>{% else %}<span class="badge b-down">fail</span>{% endif %}</td>
+    <td>{{ c.status_code if c.status_code else "—" }}</td>
+    <td>{% if c.latency_ms %}{{ "%.1f" | format(c.latency_ms) }} ms{% else %}—{% endif %}</td>
+    <td>{{ c.safe_detail }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="5" class="muted">No checks recorded yet.</td></tr>
+  {% endfor %}
+</table>
+<p class="muted">Raw error bodies are stored internally for operators and are never shown on the public status page.</p>
+
+<h2>Incidents</h2>
+<table>
+  <tr><th>#</th><th>State</th><th>Opened (IST)</th><th>Resolved (IST)</th><th></th></tr>
+  {% for i in incidents %}
+  <tr>
+    <td>{{ i.id }}</td>
+    <td><span class="badge b-{{ i.state }}">{{ i.state }}</span></td>
+    <td>{{ i.opened_at | ist }}</td>
+    <td>{{ i.resolved_at | ist if i.resolved_at else "—" }}</td>
+    <td><a href="/incidents/{{ i.id }}">timeline</a></td>
+  </tr>
+  {% else %}
+  <tr><td colspan="5" class="muted">No incidents for this service.</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

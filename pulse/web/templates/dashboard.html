@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Operator dashboard — Pulse{% endblock %}
+{% block content %}
+<h1>Operator dashboard</h1>
+<p class="muted">Live view of every registered service. Refreshes every 5 seconds.</p>
+
+<div class="cards grid">
+  <div class="card"><div class="muted">Open incidents</div>
+    <div class="big">{{ metrics.incidents.open + metrics.incidents.acknowledged }}</div></div>
+  <div class="card"><div class="muted">MTTD (24 h)</div>
+    <div class="big">{{ metrics.detection_resolution.mttd_human }}</div></div>
+  <div class="card"><div class="muted">MTTR (24 h)</div>
+    <div class="big">{{ metrics.detection_resolution.mttr_human }}</div></div>
+  <div class="card"><div class="muted">Check success (1 h)</div>
+    <div class="big">{{ metrics.checker.success_rate_pct if metrics.checker.success_rate_pct is not none else "—" }}%</div></div>
+</div>
+
+<h2>Services</h2>
+<table>
+  <tr><th>Service</th><th>State</th><th>Uptime 24 h</th><th>Target</th><th>Avg latency</th><th>Owner</th><th></th></tr>
+  {% for s in services %}
+  <tr>
+    <td><a href="/services/{{ s.id }}">{{ s.name }}</a></td>
+    <td><span class="badge b-{{ s.state }}">{{ state_label(s.state) }}</span>
+        {% if s.open_incident %}<a class="muted" href="/incidents/{{ s.open_incident.id }}">→ incident #{{ s.open_incident.id }}</a>{% endif %}</td>
+    <td>{% if s.uptime_24h is not none %}{{ "%.2f" | format(s.uptime_24h) }}%
+        {% if not s.meets_target %}<span class="badge b-down">below target</span>{% endif %}
+        {% else %}—{% endif %}</td>
+    <td>{{ s.target_pct }}%</td>
+    <td>{% if s.avg_latency is not none %}{{ s.avg_latency }} ms{% else %}—{% endif %}</td>
+    <td>{{ s.owner or "—" }}</td>
+    <td class="muted">every {{ s.interval_s | int }}s</td>
+  </tr>
+  {% endfor %}
+</table>
+
+<h2>Recent incidents</h2>
+<table>
+  <tr><th>#</th><th>Service</th><th>State</th><th>Opened (IST)</th><th>Duration</th><th></th></tr>
+  {% for i in incidents %}
+  <tr>
+    <td>{{ i.id }}</td>
+    <td>{{ i.service_name }}</td>
+    <td><span class="badge b-{{ i.state }}">{{ i.state }}</span></td>
+    <td>{{ i.opened_at | ist }}</td>
+    <td>{{ i.opened_at | dur_since(i.resolved_at) }}</td>
+    <td><a href="/incidents/{{ i.id }}">timeline</a></td>
+  </tr>
+  {% else %}
+  <tr><td colspan="6" class="muted">No incidents recorded.</td></tr>
+  {% endfor %}
+</table>
+
+<h2>Register a service</h2>
+<form method="post" action="/services" class="row card">
+  <div><label class="muted">Name</label><input name="name" placeholder="payments" required></div>
+  <div><label class="muted">Health URL</label><input name="health_url" placeholder="http://localhost:7002/health" required></div>
+  <div><label class="muted">Owner</label><input name="owner" placeholder="team-payments"></div>
+  <div style="max-width:120px"><label class="muted">Target %</label><input name="target_pct" value="99.9"></div>
+  <div style="flex:0"><button type="submit">Register</button></div>
+</form>
+{% endblock %}
