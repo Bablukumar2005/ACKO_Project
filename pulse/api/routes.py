@@ -202,10 +202,13 @@ async def _note(incident_id: int, note: str) -> dict | None:
 
 @router.post("/incidents/{incident_id}/resolve")
 async def resolve_incident(incident_id: int) -> dict:
+    if store.get_incident(incident_id) is None:
+        raise HTTPException(404, "incident not found")
     engine = pulse.engine
-    incident = await engine.manual_resolve(incident_id) if engine else None
+    incident = (await engine.manual_resolve(incident_id)) if engine \
+        else store.resolve_incident(incident_id)
     if incident is None:
-        raise HTTPException(400, "incident not found or already resolved")
+        raise HTTPException(400, "incident already resolved")
     return _incident_view(incident)
 
 
